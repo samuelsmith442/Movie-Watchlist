@@ -10,32 +10,39 @@ document.addEventListener('DOMContentLoaded', () => {
     let watchlist = [];
 
     // Fetch movie data by ID
-    async function fetchMovieData(id) {
-        const response = await fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&i=${id}`);
-        return response.json();
-    }
+    async function fetchMovieData(imdbID) {
+        const response = await fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&i=${imdbID}`);
+        const movieData = await response.json();
 
+        if (response.ok) {
+            return movieData;
+        }
+
+        throw new Error(`Failed to fetch movie with ID ${imdbID}: ${movieData.Error}`);
+    }
     // Create HTML for movie card
-    function createMovieCard(data, isWatchlist = false) {
+    function createMovieCard(movieData, isWatchlist) {
+        const { Poster, Title, imdbRating, Runtime, Genre, Plot, imdbID } = movieData;
+
         return `
         <div class="movie">
-            <img class="poster" src="${data.Poster}">
-            <span class="title">${data.Title}
+            <img class="poster" src="${Poster}">
+            <span class="title">${Title}
                 <span class="rating">
-                    <img src="./images/star.png"> ${data.imdbRating}
+                    <img src="./images/star.png"> ${imdbRating}
                 </span>
             </span>
-            <span class="runtime">${data.Runtime}</span>
-            <span class="genre">${data.Genre}</span>
-            <span class="${isWatchlist ? 'delete' : 'add'}">
+            <span class="runtime">${Runtime}</span>
+            <span class="genre">${Genre}</span>
+            <span class="button-container">
                 <button 
                 class="${isWatchlist ? 'delete-from-watchlist' : 'add-to-watchlist'}"
                 data-movie="${isWatchlist ? 'delete-movie' : 'add-movie'}"
-                data-id="${data.imdbID}">
-                    ${isWatchlist ? 'Remove' : 'Watchlist'}
+                data-id="${imdbID}">
+                    ${isWatchlist ? 'Remove' : 'Add to Watchlist'}
                 </button>
             </span>
-            <span class="plot">${data.Plot}</span>
+            <span class="plot">${Plot}</span>
         </div>`;
     }
 
@@ -103,7 +110,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showMsg();
         renderMovies(watchlist, "watchlist");
     }
-
     // Event listeners for adding/removing movies using event delegation
     document.addEventListener('click', e => {
         const id = e.target.dataset.id;

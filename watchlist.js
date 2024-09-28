@@ -43,7 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-
     // Fetch movie data by ID
     async function fetchMovieData(id) {
         const response = await fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&i=${id}`);
