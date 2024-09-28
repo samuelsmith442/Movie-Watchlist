@@ -1,0 +1,47 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="index.css">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body>
+
+        <header class="background" id="controls">
+            <h1>My Watchlist</h1>
+            <a href="./index.html" class="internal-link">Search for movies</a>
+        </header>
+
+        <section class="list" id="watchlist-listed-movies">
+            <div class="watchlist-container" id="movies-container">
+                <p class="wl-placeholder">
+                    Your watchlist is looking a little empty...
+                </p>
+                <p class="wl-placeholder">
+                    <a href="./index.html">
+                        <!-- <img src="./images/add.svg"> -->
+                        <span>Let’s add some movies!</span>
+                    </a>
+                </p>
+            </div>
+        </section>
+
+        <div class="msg fade" id="msg">
+            <span>Removed from Watchlist</span>
+        </div>
+
+        <script src="index.js"></script>
+
+        <script>
+            
+            window.addEventListener("load", (event) => {
+                if (watchlist.length > 0) {
+                    
+                    renderMovies(watchlist, element="watchlist")
+                }
+            });
+
+        </script>
+    </body>
+</html>
