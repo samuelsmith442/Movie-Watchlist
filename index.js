@@ -6,8 +6,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const watchlistMoviesEl = document.getElementById('watchlist-listed-movies');
     const msg = document.getElementById('msg');
 
-    // Initialize the watchlist array here to make it accessible globally within the DOMContentLoaded function
-    let watchlist = [];
+    let watchlist = new Set(); // Using Set for more efficient lookups
+    let searchTimeout = null;
+
+    // Debounced search function
+    function debounceSearch(func, delay) {
+        return function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => func.apply(this, arguments), delay);
+        };
+    }
+
+    // Fetch movie data in batches
+    async function fetchMoviesInBatch(imdbIDs) {
+        try {
+            const promises = imdbIDs.map(id => 
+                fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&i=${id}`)
+                    .then(res => res.json())
+            );
+            return await Promise.all(promises);
+        } catch (error) {
+            console.error('Error fetching movies:', error);
+            throw error;
+        }
+    }
+
+    // Show loading state
+    function setLoading(element, isLoading) {
+        if (!element) return;
+        if (isLoading) {
+            element.innerHTML = '<div class="loading">Loading...</div>';
+        }
+    }
 
     // Fetch movie data by ID
     async function fetchMovieData(imdbID) {
@@ -20,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         throw new Error(`Failed to fetch movie with ID ${imdbID}: ${movieData.Error}`);
     }
+
     // Create HTML for movie card
     function createMovieCard(movieData, isWatchlist) {
         const { Poster, Title, imdbRating, Runtime, Genre, Plot, imdbID } = movieData;
@@ -47,78 +78,103 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Search movies by title
-    function searchMovies() {
-        if (!movieTitleSearch || !moviesList) return; // Check if elements exist
-        fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&s=${movieTitleSearch.value}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.Response === "False") {
-                    moviesList.innerHTML = `
+    async function searchMovies() {
+        if (!movieTitleSearch?.value?.trim() || !moviesList) return;
+        
+        try {
+            setLoading(moviesList, true);
+            const response = await fetch(`https://www.omdbapi.com/?apikey=${API_KEY}&s=${movieTitleSearch.value.trim()}`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            if (data.Response === "False") {
+                moviesList.innerHTML = `
                     <div class="movies-container transform-left">
-                        <p>Unable to find what you’re looking for.<br> Please try another search.</p>
+                        <p>${data.Error || 'Unable to find what you\'re looking for. Please try another search.'}</p>
                     </div>`;
-                } else {
-                    moviesArr = data.Search.map(movie => movie.imdbID);
-                    renderMovies(moviesArr, "search");
-                }
-            });
+                return;
+            }
+
+            const moviesArr = data.Search.map(movie => movie.imdbID);
+            await renderMovies(moviesArr, "search");
+        } catch (error) {
+            console.error('Search error:', error);
+            moviesList.innerHTML = `
+                <div class="movies-container transform-left">
+                    <p>An error occurred while searching. Please try again later.</p>
+                </div>`;
+        } finally {
+            setLoading(moviesList, false);
+        }
     }
 
     // Render movies from array
     async function renderMovies(array, element = "search") {
-        let html = '';
-        for (const id of array) {
-            const movieData = await fetchMovieData(id);
-            if (movieData.Response === "True") {
-                html += createMovieCard(movieData, element === "watchlist");
-            }
-        }
+        if (!array?.length) return;
 
-        if (element === "search" && moviesList) { // Ensure moviesList exists
-            moviesList.innerHTML = html;
-        } else if (element === "watchlist" && watchlistMoviesEl) { // Ensure watchlistMoviesEl exists
-            watchlistMoviesEl.innerHTML = html || `
-            <div class="watchlist-container" id="movies-container">
-                <p class="wl-placeholder">Your watchlist is looking a little empty...</p>
-                <p class="wl-placeholder">
-                    <a href="./index.html">Let’s add some movies!</a>
-                </p>
-            </div>`;
+        const targetElement = element === "search" ? moviesList : watchlistMoviesEl;
+        if (!targetElement) return;
+
+        try {
+            setLoading(targetElement, true);
+            const movieDataArray = await fetchMoviesInBatch(array);
+            const validMovies = movieDataArray.filter(movie => movie.Response === "True");
+            
+            const html = validMovies.map(movieData => 
+                createMovieCard(movieData, element === "watchlist")
+            ).join('');
+
+            if (element === "watchlist") {
+                targetElement.innerHTML = html || `
+                    <div class="watchlist-container" id="movies-container">
+                        <p class="wl-placeholder">Your watchlist is looking a little empty...</p>
+                        <p class="wl-placeholder">
+                            <a href="./index.html">Let's add some movies!</a>
+                        </p>
+                    </div>`;
+            } else {
+                targetElement.innerHTML = html;
+            }
+        } catch (error) {
+            console.error('Render error:', error);
+            targetElement.innerHTML = `
+                <div class="error-message">
+                    <p>An error occurred while loading movies. Please try again later.</p>
+                </div>`;
+        } finally {
+            setLoading(targetElement, false);
         }
     }
 
     // Add movie to watchlist
     function addToWatchlist(id) {
-        if (!watchlist.includes(id)) {
-            watchlist.push(id);
+        if (!id) return;
+        
+        if (!watchlist.has(id)) {
+            watchlist.add(id);
             localStorage.setItem(`movie-${id}`, id);
-            if (msg) msg.textContent = "Added to Watchlist"; // Ensure msg exists
+            if (msg) msg.textContent = "Added to Watchlist";
         } else {
-            if (msg) msg.textContent = "Already added to Watchlist"; // Ensure msg exists
+            if (msg) msg.textContent = "Already added to Watchlist";
         }
         showMsg();
-        renderMovies(watchlist, "watchlist");
+        renderMovies([...watchlist], "watchlist");
     }
 
     // Remove movie from watchlist
     function removeFromWatchlist(id) {
-        const index = watchlist.indexOf(id);
-        if (index > -1) {
-            watchlist.splice(index, 1);
+        if (!id) return;
+        
+        if (watchlist.has(id)) {
+            watchlist.delete(id);
             localStorage.removeItem(`movie-${id}`);
         }
         showMsg();
-        renderMovies(watchlist, "watchlist");
+        renderMovies([...watchlist], "watchlist");
     }
-    // Event listeners for adding/removing movies using event delegation
-    document.addEventListener('click', e => {
-        const id = e.target.dataset.id;
-        if (e.target.dataset.movie === "add-movie") {
-            addToWatchlist(id);
-        } else if (e.target.dataset.movie === "delete-movie") {
-            removeFromWatchlist(id);
-        }
-    });
 
     // Show temporary message for added/removed movies
     function showMsg() {
@@ -130,17 +186,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize watchlist from localStorage
     function loadWatchlistFromLS() {
-        Object.keys(localStorage).forEach(key => {
+        watchlist.clear();
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
             if (key.startsWith('movie-')) {
-                watchlist.push(localStorage.getItem(key));
+                watchlist.add(localStorage.getItem(key));
             }
-        });
-        renderMovies(watchlist, "watchlist");
+        }
+        if (watchlist.size > 0) {
+            renderMovies([...watchlist], "watchlist");
+        }
     }
 
-    // Ensure DOM is ready and search button exists
+    // Event listeners for adding/removing movies using event delegation
+    document.addEventListener('click', e => {
+        const id = e.target.dataset.id;
+        if (e.target.dataset.movie === "add-movie") {
+            addToWatchlist(id);
+        } else if (e.target.dataset.movie === "delete-movie") {
+            removeFromWatchlist(id);
+        }
+    });
+
+    // Event listeners
     if (searchBtn) {
-        searchBtn.addEventListener('click', searchMovies);
+        const debouncedSearch = debounceSearch(searchMovies, 500);
+        searchBtn.addEventListener('click', debouncedSearch);
+        movieTitleSearch?.addEventListener('input', debouncedSearch);
     }
 
     loadWatchlistFromLS(); // Load watchlist when page is ready
